@@ -66,6 +66,7 @@
             </StackPanel.Resources>
             <Button Content="Start Working" Width="160" Height="45" Command="{Binding StartWorkingCommand}" Margin="0,0,0,0" Style="{StaticResource StartWorkingButtonStyle}"/>
             <Button Content="Stop Working" Width="160" Height="45" Command="{Binding StopWorkingCommand}"/>
+            <Button Content="Clear Table" Width="120" Height="45" Command="{Binding ClearWorkLogsCommand}"/>
         </StackPanel>
 
         <!-- DataGrid for Work Log -->

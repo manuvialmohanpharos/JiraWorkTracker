@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using System.Linq;
+using System.Windows;
 using System.Windows.Threading;
+using System.Threading.Tasks;
 
 namespace JiraWorkTracker
 {
@@ -17,11 +19,30 @@ namespace JiraWorkTracker
         private WorkLogEntry? _activeEntry;
         private RelayCommand? _startWorkingCommand;
         private RelayCommand? _stopWorkingCommand;
+        private RelayCommand? _clearWorkLogsCommand;
+        private readonly JiraService _jiraService = new JiraService();
+        private bool _isFetchingEstimates;
 
         public string? JiraId
         {
             get => _jiraId;
-            set { _jiraId = value; OnPropertyChanged(); _startWorkingCommand?.RaiseCanExecuteChanged(); OnPropertyChanged(nameof(ShouldHighlightStartWorking)); }
+            set
+            {
+                if (_jiraId != value)
+                {
+                    _jiraId = value;
+                    OnPropertyChanged();
+                    _startWorkingCommand?.RaiseCanExecuteChanged();
+                    OnPropertyChanged(nameof(ShouldHighlightStartWorking));
+                    if (!string.IsNullOrWhiteSpace(_jiraId))
+                        _ = FetchEstimatesAsync(_jiraId);
+                    else
+                    {
+                        OriginalEstimate = "";
+                        RemainingEstimate = "";
+                    }
+                }
+            }
         }
         public string OriginalEstimate
         {
@@ -33,11 +54,17 @@ namespace JiraWorkTracker
             get => _remainingEstimate;
             set { _remainingEstimate = value; OnPropertyChanged(); }
         }
+        public bool IsFetchingEstimates
+        {
+            get => _isFetchingEstimates;
+            set { _isFetchingEstimates = value; OnPropertyChanged(); }
+        }
 
         public ObservableCollection<WorkLogEntry> WorkLogs { get; } = new();
 
         public ICommand StartWorkingCommand => _startWorkingCommand!;
         public ICommand StopWorkingCommand => _stopWorkingCommand!;
+        public ICommand ClearWorkLogsCommand => _clearWorkLogsCommand!;
 
         public bool ShouldHighlightStartWorking => CanStartWorking();
 
@@ -53,21 +80,23 @@ namespace JiraWorkTracker
             WorkLogs.CollectionChanged += (s, e) => {
                 if (e.NewItems != null)
                 {
-                    foreach (WorkLogEntry entry in e.NewItems)
+                    foreach (var entry in e.NewItems.Cast<WorkLogEntry>())
                         SubscribeToWorkLogEntry(entry);
                 }
                 if (e.OldItems != null)
                 {
-                    foreach (WorkLogEntry entry in e.OldItems)
+                    foreach (var entry in e.OldItems.Cast<WorkLogEntry>())
                         UnsubscribeFromWorkLogEntry(entry);
                 }
                 _startWorkingCommand?.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(ShouldHighlightStartWorking));
+                _clearWorkLogsCommand?.RaiseCanExecuteChanged();
             };
             RefreshEntryCommands();
             RefreshLogCommands();
             _startWorkingCommand = new RelayCommand(_ => StartWorking(), _ => CanStartWorking());
             _stopWorkingCommand = new RelayCommand(_ => StopWorking(), _ => CanStopWorking());
+            _clearWorkLogsCommand = new RelayCommand(_ => ClearWorkLogs(), _ => WorkLogs.Count > 0);
         }
 
         private void SubscribeToWorkLogEntry(WorkLogEntry entry)
@@ -263,15 +292,120 @@ namespace JiraWorkTracker
             }
         }
 
-        private void LogEntry(WorkLogEntry entry)
+        private async void LogEntry(WorkLogEntry entry)
         {
-            entry.CumulativeMinutes = 0;
-            entry.RunningTimer = "00:00";
-            entry.LogTime = "";
-            entry.StoppedAt = DateTime.Now;
-            entry.IsActive = false;
+            // Save state in case we need to restore
+            var wasActive = entry.IsActive && entry.StoppedAt == null;
+            var originalStartedAt = entry.StartedAt;
+            var originalStoppedAt = entry.StoppedAt;
+            var originalCumulativeMinutes = entry.CumulativeMinutes;
+            var originalRunningTimer = entry.RunningTimer;
+            var originalLogTime = entry.LogTime;
+
+            // If still working, stop and calculate time
+            if (wasActive)
+            {
+                entry.StoppedAt = DateTime.Now;
+                var elapsed = entry.StoppedAt.Value - entry.StartedAt;
+                var minutes = Math.Max(1, (int)Math.Ceiling(elapsed.TotalMinutes));
+                entry.CumulativeMinutes += minutes;
+                var logSpan = TimeSpan.FromMinutes(entry.CumulativeMinutes);
+                entry.RunningTimer = string.Format("{0:00}:{1:00}", (int)logSpan.TotalHours, logSpan.Minutes);
+                entry.LogTime = $"{entry.CumulativeMinutes} min";
+                entry.IsActive = false;
+                SaveLogs();
+                OnPropertyChanged(nameof(WorkLogs));
+            }
+
+            if (entry.CumulativeMinutes <= 0 || string.IsNullOrWhiteSpace(entry.JiraId))
+            {
+                entry.CumulativeMinutes = 0;
+                entry.RunningTimer = "00:00";
+                entry.LogTime = "";
+                entry.StoppedAt = DateTime.Now;
+                entry.IsActive = false;
+                SaveLogs();
+                OnPropertyChanged(nameof(WorkLogs));
+                return;
+            }
+
+            int remainingEstimate = 0;
+            int.TryParse(RemainingEstimate, out remainingEstimate);
+            var mainWindow = System.Windows.Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w is MainWindow) as MainWindow;
+            string comment = string.Empty;
+            if (mainWindow != null)
+            {
+                var result = await mainWindow.ShowLogWorkDialogAsync(entry.JiraId!, entry.CumulativeMinutes, remainingEstimate);
+                if (!result.confirmed)
+                {
+                    // Restore previous state if cancelled
+                    entry.StartedAt = originalStartedAt;
+                    entry.StoppedAt = originalStoppedAt;
+                    entry.CumulativeMinutes = originalCumulativeMinutes;
+                    entry.RunningTimer = originalRunningTimer;
+                    entry.LogTime = originalLogTime;
+                    entry.IsActive = wasActive;
+                    SaveLogs();
+                    OnPropertyChanged(nameof(WorkLogs));
+                    return;
+                }
+                entry.CumulativeMinutes = result.minutesToLog;
+                remainingEstimate = result.remainingEstimate;
+                comment = result.comment;
+            }
+            // Actually log work to Jira
+            bool success = await _jiraService.LogWorkAsync(entry.JiraId!, entry.CumulativeMinutes, comment);
+            if (success)
+            {
+                // Update remaining estimate
+                int newRemaining = remainingEstimate - entry.CumulativeMinutes;
+                RemainingEstimate = newRemaining.ToString();
+                entry.CumulativeMinutes = 0;
+                entry.RunningTimer = "00:00";
+                entry.LogTime = "";
+                entry.StoppedAt = DateTime.Now;
+                entry.IsActive = false;
+                SaveLogs();
+                OnPropertyChanged(nameof(WorkLogs));
+            }
+            else
+            {
+                System.Windows.MessageBox.Show("Failed to log work to Jira. Please try again.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ClearWorkLogs()
+        {
+            WorkLogs.Clear();
             SaveLogs();
             OnPropertyChanged(nameof(WorkLogs));
+            _clearWorkLogsCommand?.RaiseCanExecuteChanged();
+        }
+
+        private async Task FetchEstimatesAsync(string jiraId)
+        {
+            IsFetchingEstimates = true;
+            try
+            {
+                var (summary, orig, rem) = await _jiraService.GetIssueEstimatesAsync(jiraId);
+                if (orig.HasValue)
+                    OriginalEstimate = orig.Value.ToString();
+                else
+                    OriginalEstimate = "";
+                if (rem.HasValue)
+                    RemainingEstimate = rem.Value.ToString();
+                else
+                    RemainingEstimate = "";
+            }
+            catch
+            {
+                OriginalEstimate = "";
+                RemainingEstimate = "";
+            }
+            finally
+            {
+                IsFetchingEstimates = false;
+            }
         }
 
         private void SaveLogs()

@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using System;
 using System.Windows.Forms; // Correct namespace for NotifyIcon
+using System.Threading.Tasks;
 
 namespace JiraWorkTracker
 {
@@ -68,6 +69,16 @@ namespace JiraWorkTracker
                     stopWorking?.Invoke(vm, null);
                 }
             }
+        }
+
+        public async Task<(bool confirmed, int minutesToLog, int remainingEstimate, string comment)> ShowLogWorkDialogAsync(string jiraId, int minutesToLog, int remainingEstimate)
+        {
+            var dialog = new LogWorkDialog(jiraId, minutesToLog, remainingEstimate)
+            {
+                Owner = this
+            };
+            var result = dialog.ShowDialog();
+            return (result == true && dialog.Confirmed, dialog.MinutesToLog, dialog.RemainingEstimate, dialog.Comment);
         }
     }
 }
