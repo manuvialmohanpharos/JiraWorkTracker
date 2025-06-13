@@ -7,11 +7,14 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
         Title="Jira Work Tracker" Height="500" Width="800">
+    <Window.DataContext>
+        <local:MainViewModel/>
+    </Window.DataContext>
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/> <!-- Title -->
             <RowDefinition Height="Auto"/> <!-- Inputs -->
-            <RowDefinition Height="Auto"/> <!-- Button -->
+            <RowDefinition Height="Auto"/> <!-- Buttons -->
             <RowDefinition Height="10"/>  <!-- Spacer -->
             <RowDefinition Height="*"/>   <!-- DataGrid -->
         </Grid.RowDefinitions>
@@ -22,42 +25,75 @@
         <!-- Input Section -->
         <Grid Grid.Row="1" HorizontalAlignment="Center">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="2*"/>
-                <ColumnDefinition Width="1*"/>
-                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="2.5*"/>
+                <ColumnDefinition Width="1.5*"/>
+                <ColumnDefinition Width="1.5*"/>
             </Grid.ColumnDefinitions>
             <!-- Jira Work Item -->
             <StackPanel Grid.Column="0" Margin="10">
                 <TextBlock Text="Jira Work Item" HorizontalAlignment="Left" Margin="0,0,0,2"/>
-                <TextBox Width="180" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="Enter Jira id..."/>
+                <TextBox Width="220" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="Enter Jira id..." Text="{Binding JiraId, UpdateSourceTrigger=PropertyChanged}" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="16"/>
             </StackPanel>
             <!-- Original Est. -->
             <StackPanel Grid.Column="1" Margin="10">
                 <TextBlock Text="Original Est." HorizontalAlignment="Left" Margin="0,0,0,2"/>
-                <TextBox Width="100" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="In hrs"/>
+                <TextBox Width="120" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="In hrs" Text="{Binding OriginalEstimate, Mode=TwoWay}" IsReadOnly="True" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="16"/>
             </StackPanel>
             <!-- Remaining Est. -->
             <StackPanel Grid.Column="2" Margin="10">
                 <TextBlock Text="Remaining Est." HorizontalAlignment="Left" Margin="0,0,0,2"/>
-                <TextBox Width="100" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="In hrs"/>
+                <TextBox Width="120" Height="40" Margin="0,5,0,0" materialDesign:HintAssist.Hint="In hrs" Text="{Binding RemainingEstimate, Mode=TwoWay}" IsReadOnly="True" TextAlignment="Center" VerticalContentAlignment="Center" FontSize="16"/>
             </StackPanel>
         </Grid>
 
-        <!-- Start Working Button -->
-        <Button Grid.Row="2" Content="Start Working" Width="180" Height="45" HorizontalAlignment="Center" Margin="0,20,0,0"/>
+        <!-- Start/Stop Working Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
+            <StackPanel.Resources>
+                <Style TargetType="Button">
+                    <Setter Property="Margin" Value="10,0,0,0"/>
+                </Style>
+            </StackPanel.Resources>
+            <Button Content="Start Working" Width="160" Height="45" Command="{Binding StartWorkingCommand}" Margin="0,0,0,0"/>
+            <Button Content="Stop Working" Width="160" Height="45" Command="{Binding StopWorkingCommand}"/>
+        </StackPanel>
 
         <!-- DataGrid for Work Log -->
-        <DataGrid Grid.Row="4" Margin="0,20,0,0" AutoGenerateColumns="False" CanUserAddRows="False" Height="220" RowHeaderWidth="0">
+        <DataGrid Grid.Row="4" Margin="0,20,0,0" AutoGenerateColumns="False" CanUserAddRows="False" RowHeaderWidth="0" ItemsSource="{Binding WorkLogs}"
+                  SelectionMode="Single" SelectionUnit="Cell">
+            <DataGrid.Resources>
+                <Style TargetType="DataGridCell">
+                    <Setter Property="HorizontalAlignment" Value="Center"/>
+                    <Setter Property="VerticalAlignment" Value="Center"/>
+                    <Setter Property="TextBlock.TextAlignment" Value="Center"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="IsHitTestVisible" Value="True"/>
+                </Style>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="BorderThickness" Value="0"/>
+                </Style>
+                <Style TargetType="DataGridColumnHeader">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                </Style>
+            </DataGrid.Resources>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Jira ID" Width="*"/>
-                <DataGridTextColumn Header="Started Working at" Width="*"/>
-                <DataGridTextColumn Header="Running Timer" Width="*"/>
-                <DataGridTextColumn Header="Stopped Working at" Width="*"/>
-                <DataGridTextColumn Header="Log hours" Width="*"/>
-                <DataGridTemplateColumn Header="Log" Width="80">
+                <DataGridTemplateColumn Header="Jira ID" Width="*" MinWidth="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="Log" Width="50" Height="32"/>
+                            <Button Content="{Binding JiraId}" Command="{Binding StartWorkOnThisCommand}" ToolTip="{Binding JiraIdToolTip}" Padding="0" Margin="0" Height="28"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Started Working at" Width="*" MinWidth="140" Binding="{Binding StartedAt}"/>
+                <DataGridTextColumn Header="Running Timer" Width="*" MinWidth="100" Binding="{Binding RunningTimer}"/>
+                <DataGridTextColumn Header="Stopped Working at" Width="*" MinWidth="140" Binding="{Binding StoppedAt}"/>
+                <DataGridTextColumn Header="Log time" Width="*" MinWidth="80" Binding="{Binding LogTime}"/>
+                <DataGridTemplateColumn Header="Log" Width="Auto" MinWidth="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="Log" Width="50" Height="32" Command="{Binding LogCommand}" ToolTip="Log time to Jira"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
