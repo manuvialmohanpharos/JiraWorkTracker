@@ -13,8 +13,8 @@ namespace JiraWorkTracker
     public class MainViewModel : INotifyPropertyChanged
     {
         private string? _jiraId;
-        private string _originalEstimate = "8"; // Dummy value
-        private string _remainingEstimate = "5"; // Dummy value
+        private string _originalEstimate = "";
+        private string _remainingEstimate = "";
         private DispatcherTimer? _timer;
         private WorkLogEntry? _activeEntry;
         private RelayCommand? _startWorkingCommand;
@@ -22,6 +22,7 @@ namespace JiraWorkTracker
         private RelayCommand? _clearWorkLogsCommand;
         private readonly JiraService _jiraService = new JiraService();
         private bool _isFetchingEstimates;
+        private string _statusMessage = string.Empty;
 
         public string? JiraId
         {
@@ -58,6 +59,11 @@ namespace JiraWorkTracker
         {
             get => _isFetchingEstimates;
             set { _isFetchingEstimates = value; OnPropertyChanged(); }
+        }
+        public string StatusMessage
+        {
+            get => _statusMessage;
+            set { _statusMessage = value; OnPropertyChanged(); }
         }
 
         public ObservableCollection<WorkLogEntry> WorkLogs { get; } = new();
@@ -367,6 +373,7 @@ namespace JiraWorkTracker
                 entry.IsActive = false;
                 SaveLogs();
                 OnPropertyChanged(nameof(WorkLogs));
+                StatusMessage = "Time logged";
             }
             else
             {
