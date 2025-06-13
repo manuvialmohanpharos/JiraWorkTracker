@@ -49,17 +49,30 @@
         <!-- Start/Stop Working Buttons -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">
             <StackPanel.Resources>
+                <Style x:Key="StartWorkingButtonStyle" TargetType="Button">
+                    <Setter Property="Margin" Value="10,0,0,0"/>
+                    <Setter Property="Background" Value="LightGray"/>
+                    <Setter Property="Foreground" Value="Black"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShouldHighlightStartWorking}" Value="True">
+                            <Setter Property="Background" Value="LightGreen"/>
+                            <Setter Property="Foreground" Value="Black"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
                 <Style TargetType="Button">
                     <Setter Property="Margin" Value="10,0,0,0"/>
                 </Style>
             </StackPanel.Resources>
-            <Button Content="Start Working" Width="160" Height="45" Command="{Binding StartWorkingCommand}" Margin="0,0,0,0"/>
+            <Button Content="Start Working" Width="160" Height="45" Command="{Binding StartWorkingCommand}" Margin="0,0,0,0" Style="{StaticResource StartWorkingButtonStyle}"/>
             <Button Content="Stop Working" Width="160" Height="45" Command="{Binding StopWorkingCommand}"/>
         </StackPanel>
 
         <!-- DataGrid for Work Log -->
         <DataGrid Grid.Row="4" Margin="0,20,0,0" AutoGenerateColumns="False" CanUserAddRows="False" RowHeaderWidth="0" ItemsSource="{Binding WorkLogs}"
-                  SelectionMode="Single" SelectionUnit="Cell">
+                  SelectionMode="Single"
+                  SelectionUnit="FullRow"
+                  IsReadOnly="True">
             <DataGrid.Resources>
                 <Style TargetType="DataGridCell">
                     <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -68,10 +81,25 @@
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
                     <Setter Property="IsHitTestVisible" Value="True"/>
+                    <Setter Property="Foreground" Value="Black"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="White"/>
+                            <Setter Property="Foreground" Value="Black"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="Transparent"/>
+                        </Trigger>
+                    </Style.Triggers>
                 </Style>
                 <Style TargetType="DataGridRow">
                     <Setter Property="Background" Value="Transparent"/>
                     <Setter Property="BorderThickness" Value="0"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="White"/>
+                        </Trigger>
+                    </Style.Triggers>
                 </Style>
                 <Style TargetType="DataGridColumnHeader">
                     <Setter Property="HorizontalContentAlignment" Value="Center"/>
@@ -82,7 +110,24 @@
                 <DataGridTemplateColumn Header="Jira ID" Width="*" MinWidth="100">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Button Content="{Binding JiraId}" Command="{Binding StartWorkOnThisCommand}" ToolTip="{Binding JiraIdToolTip}" Padding="0" Margin="0" Height="28"/>
+                            <Button Content="{Binding JiraId}" Command="{Binding StartWorkOnThisCommand}" ToolTip="{Binding JiraIdToolTip}" Padding="0" Margin="0" Height="28" Focusable="False">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="BorderBrush" Value="Transparent"/>
+                                        <Setter Property="BorderThickness" Value="0"/>
+                                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                        <Setter Property="OverridesDefaultStyle" Value="True"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

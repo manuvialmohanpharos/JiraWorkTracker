@@ -10,17 +10,18 @@ namespace JiraWorkTracker
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private string _jiraId;
+        private string? _jiraId;
         private string _originalEstimate = "8"; // Dummy value
         private string _remainingEstimate = "5"; // Dummy value
-        private DispatcherTimer _timer;
-        private WorkLogEntry _activeEntry;
-        private RelayCommand _startWorkingCommand;
+        private DispatcherTimer? _timer;
+        private WorkLogEntry? _activeEntry;
+        private RelayCommand? _startWorkingCommand;
+        private RelayCommand? _stopWorkingCommand;
 
-        public string JiraId
+        public string? JiraId
         {
             get => _jiraId;
-            set { _jiraId = value; OnPropertyChanged(); _startWorkingCommand?.RaiseCanExecuteChanged(); }
+            set { _jiraId = value; OnPropertyChanged(); _startWorkingCommand?.RaiseCanExecuteChanged(); OnPropertyChanged(nameof(ShouldHighlightStartWorking)); }
         }
         public string OriginalEstimate
         {
@@ -35,8 +36,10 @@ namespace JiraWorkTracker
 
         public ObservableCollection<WorkLogEntry> WorkLogs { get; } = new();
 
-        public ICommand StartWorkingCommand => _startWorkingCommand;
-        public ICommand StopWorkingCommand { get; }
+        public ICommand StartWorkingCommand => _startWorkingCommand!;
+        public ICommand StopWorkingCommand => _stopWorkingCommand!;
+
+        public bool ShouldHighlightStartWorking => CanStartWorking();
 
         public MainViewModel()
         {
@@ -45,11 +48,43 @@ namespace JiraWorkTracker
             foreach (var entry in loaded)
             {
                 WorkLogs.Add(entry);
+                SubscribeToWorkLogEntry(entry);
             }
+            WorkLogs.CollectionChanged += (s, e) => {
+                if (e.NewItems != null)
+                {
+                    foreach (WorkLogEntry entry in e.NewItems)
+                        SubscribeToWorkLogEntry(entry);
+                }
+                if (e.OldItems != null)
+                {
+                    foreach (WorkLogEntry entry in e.OldItems)
+                        UnsubscribeFromWorkLogEntry(entry);
+                }
+                _startWorkingCommand?.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(ShouldHighlightStartWorking));
+            };
             RefreshEntryCommands();
             RefreshLogCommands();
             _startWorkingCommand = new RelayCommand(_ => StartWorking(), _ => CanStartWorking());
-            StopWorkingCommand = new RelayCommand(_ => StopWorking(), _ => WorkLogs.Any() && WorkLogs.First().StoppedAt == null);
+            _stopWorkingCommand = new RelayCommand(_ => StopWorking(), _ => CanStopWorking());
+        }
+
+        private void SubscribeToWorkLogEntry(WorkLogEntry entry)
+        {
+            entry.PropertyChanged += WorkLogEntry_PropertyChanged;
+        }
+        private void UnsubscribeFromWorkLogEntry(WorkLogEntry entry)
+        {
+            entry.PropertyChanged -= WorkLogEntry_PropertyChanged;
+        }
+        private void WorkLogEntry_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(WorkLogEntry.IsActive) || e.PropertyName == nameof(WorkLogEntry.StoppedAt))
+            {
+                _startWorkingCommand?.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(ShouldHighlightStartWorking));
+            }
         }
 
         private void EnsureEntryCommand(WorkLogEntry entry)
@@ -82,6 +117,31 @@ namespace JiraWorkTracker
         {
             if (_activeEntry != null && _activeEntry.StoppedAt == null)
                 StopWorking();
+
+            // Check if an entry with the same JiraId already exists
+            var existingEntry = WorkLogs.FirstOrDefault(e => e.JiraId == JiraId);
+            if (existingEntry != null)
+            {
+                // Move to top if not already there
+                int oldIndex = WorkLogs.IndexOf(existingEntry);
+                if (oldIndex > 0)
+                    WorkLogs.Move(oldIndex, 0);
+                // Reset timing and mark as active
+                existingEntry.StartedAt = DateTime.Now;
+                existingEntry.StoppedAt = null;
+                existingEntry.IsActive = true;
+                existingEntry.RunningTimer = "00:00";
+                _activeEntry = existingEntry;
+                SetActiveEntry(existingEntry);
+                StartTimer();
+                SaveLogs();
+                OnPropertyChanged(nameof(WorkLogs));
+                _stopWorkingCommand?.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(ShouldHighlightStartWorking));
+                return;
+            }
+
+            // Otherwise, create a new entry
             _activeEntry = new WorkLogEntry
             {
                 JiraId = JiraId,
@@ -99,16 +159,24 @@ namespace JiraWorkTracker
             StartTimer();
             SaveLogs();
             OnPropertyChanged(nameof(WorkLogs));
+            _stopWorkingCommand?.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(ShouldHighlightStartWorking));
         }
 
         private bool CanStartWorking()
         {
-            // Disable if JiraId is empty or if the top row is the active entry with the same JiraId
             if (string.IsNullOrWhiteSpace(JiraId))
                 return false;
-            if (WorkLogs.Count > 0 && WorkLogs[0].JiraId == JiraId && WorkLogs[0].IsActive && WorkLogs[0].StoppedAt == null)
+            // Disable if any entry is active and not stopped
+            if (WorkLogs.Any(e => e.IsActive && e.StoppedAt == null))
                 return false;
             return true;
+        }
+
+        private bool CanStopWorking()
+        {
+            // Enable if any entry is active and not stopped
+            return WorkLogs.Any(e => e.IsActive && e.StoppedAt == null);
         }
 
         private void SetActiveEntry(WorkLogEntry entry)
@@ -118,6 +186,8 @@ namespace JiraWorkTracker
             if (entry != null)
                 entry.IsActive = true;
             _startWorkingCommand?.RaiseCanExecuteChanged();
+            _stopWorkingCommand?.RaiseCanExecuteChanged();
+            OnPropertyChanged(nameof(ShouldHighlightStartWorking));
         }
 
         private void StartWorkOnEntry(WorkLogEntry entry)
@@ -147,6 +217,7 @@ namespace JiraWorkTracker
             StartTimer();
             SaveLogs();
             OnPropertyChanged(nameof(WorkLogs));
+            _stopWorkingCommand?.RaiseCanExecuteChanged();
         }
 
         private void StartTimer()
@@ -162,7 +233,7 @@ namespace JiraWorkTracker
             Timer_Tick(null, null);
         }
 
-        private void Timer_Tick(object sender, EventArgs e)
+        private void Timer_Tick(object? sender, EventArgs e)
         {
             if (_activeEntry != null && _activeEntry.StoppedAt == null)
             {
@@ -187,6 +258,8 @@ namespace JiraWorkTracker
                 _activeEntry.IsActive = false;
                 SaveLogs();
                 OnPropertyChanged(nameof(WorkLogs));
+                _stopWorkingCommand?.RaiseCanExecuteChanged();
+                OnPropertyChanged(nameof(ShouldHighlightStartWorking));
             }
         }
 
@@ -206,23 +279,23 @@ namespace JiraWorkTracker
             WorkLogStorageService.Save(WorkLogs);
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
     // Simple RelayCommand implementation
     public class RelayCommand : ICommand
     {
         private readonly Action<object> _execute;
-        private readonly Predicate<object> _canExecute;
-        public RelayCommand(Action<object> execute, Predicate<object> canExecute = null)
+        private readonly Predicate<object>? _canExecute;
+        public RelayCommand(Action<object> execute, Predicate<object>? canExecute = null)
         {
             _execute = execute;
             _canExecute = canExecute;
         }
-        public bool CanExecute(object parameter) => _canExecute == null || _canExecute(parameter);
-        public void Execute(object parameter) => _execute(parameter);
-        public event EventHandler CanExecuteChanged;
+        public bool CanExecute(object? parameter) => _canExecute == null || _canExecute(parameter!);
+        public void Execute(object? parameter) => _execute(parameter!);
+        public event EventHandler? CanExecuteChanged;
         public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 }
