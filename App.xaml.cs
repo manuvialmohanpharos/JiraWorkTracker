@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Windows;
 using Microsoft.Win32;
+using System.IO;
+using System.Text.Json;
 
 namespace JiraWorkTracker
 {
@@ -8,8 +10,74 @@ namespace JiraWorkTracker
     {
         protected override void OnStartup(StartupEventArgs e)
         {
-            base.OnStartup(e);
-            SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
+            try
+            {
+                base.OnStartup(e);
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
+
+                // Prompt for credentials if config.json does not exist or is invalid
+                AppConfig? config = null;
+                string configPath = "config.json";
+                bool credentialsSet = false;
+
+                if (!File.Exists(configPath))
+                {
+                    credentialsSet = PromptForCredentials(configPath, out config);
+                }
+                else
+                {
+                    try
+                    {
+                        config = ConfigLoader.Load(configPath);
+                        credentialsSet = true;
+                    }
+                    catch (Exception)
+                    {
+                        credentialsSet = PromptForCredentials(configPath, out config);
+                    }
+                }
+
+                if (!credentialsSet)
+                {
+                    Shutdown();
+                    return;
+                }
+
+                // Always show the main window after credentials are set/loaded
+                var mainWindow = new MainWindow();
+                MainWindow = mainWindow;
+                mainWindow.Show();
+                ShutdownMode = ShutdownMode.OnMainWindowClose;
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Startup exception: {ex}", "Fatal Error");
+                Shutdown();
+            }
+        }
+
+        private bool PromptForCredentials(string configPath, out AppConfig? config)
+        {
+            config = null;
+            AppConfig? localConfig = null;
+            var dlg = new CredentialsDialog();
+            var result = dlg.ShowDialog();
+            if (result == true)
+            {
+                localConfig = new AppConfig
+                {
+                    JiraCredentials = new JiraCredentials
+                    {
+                        Email = dlg.Email,
+                        ApiToken = dlg.ApiToken
+                    }
+                };
+                var json = JsonSerializer.Serialize(localConfig, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(configPath, json);
+            }
+            config = localConfig;
+            return config != null;
         }
 
         private void SystemEvents_SessionSwitch(object sender, SessionSwitchEventArgs e)

@@ -14,10 +14,10 @@ namespace JiraWorkTracker
         private readonly string _apiToken;
         private readonly HttpClient _httpClient;
 
-        public JiraService()
+        public JiraService(string email, string apiToken)
         {
-            _email = Environment.GetEnvironmentVariable("JIRA_EMAIL") ?? throw new InvalidOperationException("JIRA_EMAIL environment variable not set.");
-            _apiToken = Environment.GetEnvironmentVariable("JIRA_API_TOKEN") ?? throw new InvalidOperationException("JIRA_API_TOKEN environment variable not set.");
+            _email = email ?? throw new ArgumentNullException(nameof(email));
+            _apiToken = apiToken ?? throw new ArgumentNullException(nameof(apiToken));
             _httpClient = new HttpClient();
             var authToken = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_email}:{_apiToken}"));
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", authToken);

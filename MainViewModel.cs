@@ -20,7 +20,7 @@ namespace JiraWorkTracker
         private RelayCommand? _startWorkingCommand;
         private RelayCommand? _stopWorkingCommand;
         private RelayCommand? _clearWorkLogsCommand;
-        private readonly JiraService _jiraService = new JiraService();
+        private readonly JiraService _jiraService;
         private bool _isFetchingEstimates;
         private string _statusMessage = string.Empty;
 
@@ -76,6 +76,10 @@ namespace JiraWorkTracker
 
         public MainViewModel()
         {
+            // Load config and initialize JiraService
+            var config = ConfigLoader.Load();
+            _jiraService = new JiraService(config.JiraCredentials.Email, config.JiraCredentials.ApiToken);
+
             // Load from JSON
             var loaded = WorkLogStorageService.Load();
             foreach (var entry in loaded)

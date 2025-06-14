@@ -1,0 +1,6 @@
+{
+  "JiraCredentials": {
+    "Email": "your.email@company.com",
+    "ApiToken": "your-api-token"
+  }
+}
